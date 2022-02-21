@@ -7,7 +7,7 @@
 //Defines
 #define PLUGIN_NAME "[TF2] Tanks"
 #define PLUGIN_DESCRIPTION "A gamemode for Team Fortress 2 involving Soldiers in tanks."
-#define PLUGIN_VERSION "1.0.1"
+#define PLUGIN_VERSION "1.0.2"
 
 /*****************************/
 //Includes
@@ -84,6 +84,9 @@ public void OnMapStart()
 		g_IsTank[i] = false;
 		g_Snap[i] = true;
 	}
+
+	PrecacheSound("mvm/giant_common/giant_common_explodes_01.wav");
+	PrecacheSound("mvm/giant_common/giant_common_explodes_02.wav");
 }
 
 public void OnClientConnected(int client)
@@ -114,11 +117,22 @@ public void Event_OnPlayerDeath(Event event, const char[] name, bool dontBroadca
 
 	g_IsTank[client] = false;
 	g_Snap[client] = true;
+
+	float origin[3];
+	GetClientAbsOrigin(client, origin);
+
+	EmitSoundToAll(GetRandomInt(1, 2) == 1 ? "mvm/giant_common/giant_common_explodes_01.wav" : "mvm/giant_common/giant_common_explodes_02.wav", client);
+	TF2_Particle("mvm_loot_explosion", origin, client);
+	DamageRadiusWithFalloff(origin, 500.0, 100.0, 450.0, client, 0, DMG_BLAST);
 }
 
 public void Event_OnRoundStart(Event event, const char[] name, bool dontBroadcast)
 {
 	g_BetweenRounds = false;
+
+	for (int i = 1; i <= MaxClients; i++)
+		if (IsClientInGame(i) && IsPlayerAlive(i))
+			SetTankMode(i, true);
 }
 
 public void Event_OnRoundEnd(Event event, const char[] name, bool dontBroadcast)
@@ -336,4 +350,56 @@ float ClampFloat(float fValue, float fMin, float fMax)
 		fValue = fMax;
 
 	return fValue;
+}
+
+void TF2_Particle(char[] name, float origin[3], int entity = -1, float angles[3] = {0.0, 0.0, 0.0}, bool resetparticles = false)
+{
+	int tblidx = FindStringTable("ParticleEffectNames");
+
+	char tmp[256];
+	int stridx = INVALID_STRING_INDEX;
+
+	for (int i = 0; i < GetStringTableNumStrings(tblidx); i++)
+	{
+		ReadStringTable(tblidx, i, tmp, sizeof(tmp));
+		if (StrEqual(tmp, name, false))
+		{
+			stridx = i;
+			break;
+		}
+	}
+
+	TE_Start("TFParticleEffect");
+	TE_WriteFloat("m_vecOrigin[0]", origin[0]);
+	TE_WriteFloat("m_vecOrigin[1]", origin[1]);
+	TE_WriteFloat("m_vecOrigin[2]", origin[2]);
+	TE_WriteVector("m_vecAngles", angles);
+	TE_WriteNum("m_iParticleSystemIndex", stridx);
+	TE_WriteNum("entindex", entity);
+	TE_WriteNum("m_iAttachType", 5);
+	TE_WriteNum("m_bResetParticles", resetparticles);
+	TE_SendToAll();
+}
+
+void DamageRadiusWithFalloff(float origin[3], float distance = 500.0, float min_damage = 10.0, float max_damage = 50.0, int attacker = 0, int inflictor = 0, int damagetype = DMG_GENERIC, int weapon = -1, float damageforce[3] = NULL_VECTOR)
+{
+	if (distance <= 0.0)
+		return;
+
+	float vecOrigin[3]; float actualdistance; float tempdamage;
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientInGame(i) || !IsPlayerAlive(i) || (attacker > 0 && i == attacker))
+			continue;
+
+		GetClientAbsOrigin(i, vecOrigin);
+		
+		actualdistance = GetVectorDistance(origin, vecOrigin);
+		if (actualdistance > distance)
+			continue;
+		
+		tempdamage = max_damage - (actualdistance - 0.0) / (distance - 0.0) * (max_damage - min_damage);
+
+		SDKHooks_TakeDamage(i, inflictor, attacker, tempdamage, damagetype, weapon, damageforce, origin);
+	}
 }
