@@ -7,7 +7,7 @@
 //Defines
 #define PLUGIN_NAME "[TF2] Tanks"
 #define PLUGIN_DESCRIPTION "A gamemode for Team Fortress 2 involving Soldiers in tanks."
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.0.1"
 
 /*****************************/
 //Includes
@@ -19,6 +19,9 @@
 
 /*****************************/
 //ConVars
+
+ConVar convar_CameraSnap;
+ConVar convar_LockCamera;
 
 /*****************************/
 //Globals
@@ -45,6 +48,9 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
+	convar_CameraSnap = CreateConVar("sm_tanks_camera_snap", "80.0", "Shat offset should the camera snap to when moving it?", FCVAR_NOTIFY, true, 0.0);
+	convar_LockCamera = CreateConVar("sm_tanks_lock_camera", "0", "Should the cameras be locked to up and down?", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+
 	HookEvent("player_spawn", Event_OnPlayerSpawn);
 	HookEvent("player_changeclass", Event_OnPlayerSpawn);
 	HookEvent("player_death", Event_OnPlayerDeath);
@@ -59,9 +65,8 @@ public void OnPluginStart()
 		PrepSDKCall_SetFromConf(conf, SDKConf_Signature, "CTFPlayer::PlayTauntSceneFromItem");
 		PrepSDKCall_AddParameter(SDKType_PlainOldData, SDKPass_Plain);
 		PrepSDKCall_SetReturnInfo(SDKType_Bool, SDKPass_Plain);
-		g_PlayTaunt = EndPrepSDKCall();
-		
-		if (g_PlayTaunt == null)
+
+		if ((g_PlayTaunt = EndPrepSDKCall()) == null)
 			LogError("Error while parsing 'tf2.tanks': Invalid Signatures");
 		
 		delete conf;
@@ -296,8 +301,7 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float fV
 	if (!g_IsTank[iClient])
 		return Plugin_Continue;
 
-	float snap = 80.0;
-	bool forcelocked = true;
+	float snap = convar_CameraSnap.FloatValue;
 
 	if (snap > 0)
 	{
@@ -306,7 +310,7 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float fV
 		else if (FloatAbs(float(iMouse[0])) > snap)
 			g_Snap[iClient] = false;
 
-		if (!g_Snap[iClient] && !forcelocked)
+		if (!g_Snap[iClient] && !convar_LockCamera.BoolValue)
 			return Plugin_Changed;
 
 		float fParam = GetEntPropFloat(iClient, Prop_Send, "m_flPoseParameter", 4);
